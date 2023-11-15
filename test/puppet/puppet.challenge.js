@@ -95,6 +95,10 @@ describe('[Challenge] Puppet', function () {
 
     it('Execution', async function () {
         /** CODE YOUR SOLUTION HERE */
+        const Attacker = await ethers.getContractFactory("puppetAttacker");
+        const attacker = await Attacker.deploy(lendingPool.address, token.address, uniswapExchange.address, player.address, {value: ethers.utils.parseEther("10.1")});
+        await token.connect(player).transfer(attacker.address, PLAYER_INITIAL_TOKEN_BALANCE);
+        await attacker.attack();
     });
 
     after(async function () {

